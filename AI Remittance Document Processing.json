@@ -1,0 +1,1016 @@
+{
+  "name": "AI Remittance Document Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "maxTokens": 2000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        80,
+        208
+      ],
+      "id": "c15933fc-ac4d-4db6-b010-95e237e6bfc6",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "Ko6evi3I9NEMSKPX",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "remittance-upload",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1616,
+        -32
+      ],
+      "id": "28eb40ea-6943-40a5-9490-6f95867b1fc6",
+      "name": "Receive Remittance",
+      "webhookId": "b73b0c17-46e7-45b2-8f50-68809ef34111"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "file",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        -32
+      ],
+      "id": "b6579ede-ca9e-4844-b1aa-345eec5e8e83",
+      "name": "Extract PDF Text"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Here is the text extracted from the remittance PDF:\n\n{{ $json.text }}\n\nYou are a remittance processing assistant.\n\nAnalyze the remittance information.\n\nDetermine:\n1. The document type\n2. The payment amount\n3. The reference number\n4. Whether any required information is missing\n5. Whether the record should be accepted or sent for human review\n\nReturn your response as structured JSON with these fields:\n\ndocumentType\namount\nreference\nmissingInformation\nstatus\nreason\n\nIMPORTANT STATUS RULE:\n\nThe \"status\" field MUST contain exactly one of these two values:\n\nAccepted\nReview\n\nUse \"Accepted\" when the remittance can be processed automatically, including valid partial payments.\n\nUse \"Review\" when information is missing, inconsistent, or the payment requires human intervention.\n\nNever use \"accept\", \"accepted\", \"partial\", \"paid\", \"rejected\", or any other value for the status field.\n\nIMPORTANT VALIDATION RULES:\n\nThe following information is REQUIRED for automatic acceptance:\n\n- Company\n- Customer ID\n- Payment Reference\n- Payment Date\n- Invoice Number\n- Invoice Amount\n- Payment Amount\n- Payment Status\n\nIf ANY one of these required fields is missing from the remittance document:\n\n- missingInformation MUST be true\n- status MUST be exactly \"Review\"\n- reason MUST identify which required field(s) are missing\n\nOnly set missingInformation to false and status to \"Accepted\" when ALL required fields are present and the information is consistent.\n\nDo not assume or infer a missing field from other information in the document.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1088,
+        -32
+      ],
+      "id": "6fa45fa4-dcca-486c-aa1a-ff5bed708239",
+      "name": "AI Remittance Validator"
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $json.output;\n\n// Remove Markdown code fences if the AI included them\nconst cleaned = output\n  .replace(/```json\\s*/i, '')\n  .replace(/```\\s*$/i, '')\n  .trim();\n\nconst data = JSON.parse(cleaned);\n\nreturn [\n  {\n    json: data\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -736,
+        -32
+      ],
+      "id": "ede994d6-b712-46cb-bb6b-94f4cf8a4c08",
+      "name": "Prepare Remittance Data"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value":"YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Reference",
+              "lookupValue": "={{ $json.reference }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -304,
+        -32
+      ],
+      "id": "4cd68fa3-5fe0-4db5-8d33-b1e1b3506aad",
+      "name": "Check Existing Reference1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sUY6zY8VzaHfAeq6",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bfbc39c4-e673-42ab-b287-dd6a53ec8dc9",
+              "name": "=originalDocumentType",
+              "value": "={{ $json.documentType }}",
+              "type": "string"
+            },
+            {
+              "id": "f098b280-3dc9-4022-aa52-4948189e3f64",
+              "name": "originalAmount",
+              "value": "={{ $json.amount }}",
+              "type": "string"
+            },
+            {
+              "id": "59c09481-bb7c-4b15-8145-782863f71b17",
+              "name": "originalReference",
+              "value": "={{ $json.reference }}",
+              "type": "string"
+            },
+            {
+              "id": "67b25694-60b9-4e0c-a5b2-cefc223dcef9",
+              "name": "originalMissingInformation",
+              "value": "={{ $json.missingInformation }}",
+              "type": "string"
+            },
+            {
+              "id": "8c6add37-28cc-4ff8-88f0-9b3c3e5b9971",
+              "name": "originalStatus",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "4c544e4a-cb71-47c2-8dff-4e8a3beb380e",
+              "name": "originalReason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -512,
+        -32
+      ],
+      "id": "72934615-d18b-40cd-ae67-515d0a581a4d",
+      "name": "Prepare Validation Fields"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -80,
+        -16
+      ],
+      "id": "f380d1e7-cd63-45d0-8cc6-9f73cecb098d",
+      "name": "Merge Validation Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1d84d6c9-2b0b-4c24-92b0-10530a28fc18",
+              "leftValue": "={{ $json.row_number.toString() }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        144,
+        -16
+      ],
+      "id": "d345a65e-be82-4cf8-99ba-dc4604f9e065",
+      "name": "Duplicate Check"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1gMIXUyltpSJPAkv6_TIW8466sgLhmR_Q9QWqEt4LjhU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet2",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $now.toFormat('yyyy-MM-dd') }}",
+            "Document Type": "={{ $('Prepare Validation Fields').item.json.originalDocumentType }}",
+            "Amount": "={{ $('Prepare Validation Fields').item.json.originalAmount }}",
+            "Reference": "={{ $('Prepare Validation Fields').item.json.originalReference }}",
+            "Missing Information": "={{ $('Prepare Validation Fields').item.json.originalMissingInformation }}",
+            "Status": "Duplicate",
+            "Reason": "Duplicate payment reference already exists in the Accepted sheet."
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Document Type",
+              "displayName": "Document Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reference",
+              "displayName": "Reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Missing Information",
+              "displayName": "Missing Information",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        384,
+        -32
+      ],
+      "id": "dd08429a-18bb-40b3-bb57-69d468494514",
+      "name": "Log Duplicate",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sUY6zY8VzaHfAeq6",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ec158549-d6a8-47e0-98fc-692e5915c869",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "Accepted",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        -16
+      ],
+      "id": "4cf46775-c736-4464-9e48-5b19cdee5679",
+      "name": "Validation Decision"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1gMIXUyltpSJPAkv6_TIW8466sgLhmR_Q9QWqEt4LjhU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Amount": "={{ $json.amount }}",
+            "Reference": "={{ $json.reference }}",
+            "Missing Information": "={{ $json.missingInformation }}",
+            "Status": "={{ $json.status }}",
+            "Reason": "={{ $json.reason }}",
+            "Document Type": "={{ $json.documentType }}",
+            "Date": "={{ $now.toFormat('yyyy-MM-dd') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Document Type",
+              "displayName": "Document Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reference",
+              "displayName": "Reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Missing Information",
+              "displayName": "Missing Information",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "documentType",
+              "displayName": "documentType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "amount",
+              "displayName": "amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reference",
+              "displayName": "reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "missingInformation",
+              "displayName": "missingInformation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1024,
+        -96
+      ],
+      "id": "4256538d-42e6-49ea-8f85-7ff867a1d062",
+      "name": "Log Accepted",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sUY6zY8VzaHfAeq6",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1gMIXUyltpSJPAkv6_TIW8466sgLhmR_Q9QWqEt4LjhU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $now.toFormat('yyyy-MM-dd') }}",
+            "Document Type": "={{ $json.documentType }}",
+            "Amount": "={{ $json.amount }}",
+            "Reference": "={{ $json.reference }}",
+            "Missing Information": "={{ $json.missingInformation }}",
+            "Status": "={{ $json.status }}",
+            "Reason": "={{ $json.reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Document Type",
+              "displayName": "Document Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reference",
+              "displayName": "Reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Missing Information",
+              "displayName": "Missing Information",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        976,
+        48
+      ],
+      "id": "8d074afc-ec61-4189-ad55-c5d96450581e",
+      "name": "Log Human Review",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sUY6zY8VzaHfAeq6",
+          "name": "Google Sheets account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_REVIEWER_EMAIL@example.com",
+        "subject": "Remittance Requires Human Review",
+        "emailType": "text",
+        "message": "=A Remittance Requires Human Review\n\nHello,\n\nA remittance document has been flagged for manual review.\n\nReference: {{ $json.reference }}\nAmount: ${{ $json.amount }}\nStatus: {{ $json.status }}\nMissing Information: {{ $json.missingInformation }}\n\nReason:\n{{ $json.reason }}\n\nPlease review the remittance in the Human Review sheet and take the appropriate action.\n\nThank you,\nRemittance Automation",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1296,
+        96
+      ],
+      "id": "9bae5c7d-b427-4521-b663-d3c89c7f73b8",
+      "name": "Notify Human Reviewer",
+      "webhookId": "f75b5ba1-737d-4612-8c53-a26e401b4e2e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "FfnB1CDA1Gy38aXf",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1232,
+        -96
+      ],
+      "id": "5f23b1aa-ab49-4f9c-9da9-1418e6741fa1",
+      "name": "Combine Outcomes"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1gMIXUyltpSJPAkv6_TIW8466sgLhmR_Q9QWqEt4LjhU",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet3",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.Date }}",
+            "Reference": "={{ $json.Reference }}",
+            "Document Type": "={{ $json[\"Document Type\"] }}",
+            "Amount": "={{ $json.Amount }}",
+            "Status": "={{ $json.Status }}",
+            "Missing Information": "={{ $json[\"Missing Information\"] }}",
+            "Reason": "={{ $json.Reason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reference",
+              "displayName": "Reference",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Document Type",
+              "displayName": "Document Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Missing Information",
+              "displayName": "Missing Information",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reason",
+              "displayName": "Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1504,
+        -96
+      ],
+      "id": "74413c54-1f0f-43a9-bfa5-2e1175d49aed",
+      "name": "Write Processing Log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "sUY6zY8VzaHfAeq6",
+          "name": "Google Sheets account 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Remittance Validator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Remittance": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "AI Remittance Validator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Remittance Validator": {
+      "main": [
+        [
+          {
+            "node": "Prepare Remittance Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Remittance Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Validation Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Reference1": {
+      "main": [
+        [
+          {
+            "node": "Merge Validation Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Validation Fields": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Reference1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Validation Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Validation Data": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Check": {
+      "main": [
+        [
+          {
+            "node": "Log Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Validation Decision",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Combine Outcomes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Validation Decision": {
+      "main": [
+        [
+          {
+            "node": "Log Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Human Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Accepted": {
+      "main": [
+        [
+          {
+            "node": "Combine Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Human Review": {
+      "main": [
+        [
+          {
+            "node": "Notify Human Reviewer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Combine Outcomes",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Combine Outcomes": {
+      "main": [
+        [
+          {
+            "node": "Write Processing Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "aPqzsbWjcCtqqHpb",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "b95a8c4b-3642-468c-bd20-8c4f249c7c4c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8c97443191be770d747480364798fa4497351371ff52b21d6be9300582b6c7ef"
+  },
+  "id": "IkyXlMUmJ2L2H4MY",
+  "tags": []
+}
